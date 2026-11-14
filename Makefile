@@ -100,6 +100,11 @@ ifeq ($(BRINGUP),1)
 CFG += BRINGUP
 endif
 
+# Lab RAM chainload: keep a primary watchdog that is already counting instead of disarming it.
+ifeq ($(KEEP_ARMED_WDT),1)
+CFG += KEEP_ARMED_WDT
+endif
+
 ifeq ($(CHAINLOADING),1)
 CFG += CHAINLOADING
 CARGO_FLAGS += --features chainload
