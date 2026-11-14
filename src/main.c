@@ -419,7 +419,17 @@ void aura_main(void)
     aic_init();
     smp_init();
 #endif
-    wdt_disable();
+#ifdef KEEP_ARMED_WDT
+    /*
+     * A RAM chainload from a lab proxy that armed the primary watchdog for the attempt: keep it
+     * counting, so a stall before the host reconnects still resets the Mac. The host re-arms or
+     * disarms it once it has the proxy, and Linux's watchdog driver keeps it fed after handoff.
+     */
+    if (wdt_primary_armed())
+        printf("WDT: keeping the armed primary watchdog (KEEP_ARMED_WDT)\n");
+    else
+#endif
+        wdt_disable();
     if (aura_trial_enabled() && wdt_arm_trial())
         printf("WDT: could not arm the trial watchdog\n");
 #if defined(CHAINLOADING) && !defined(ESP_STAGE2)
