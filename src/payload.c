@@ -32,6 +32,12 @@
 // Kernels must be 2MB aligned
 #define KERNEL_ALIGN (2 << 20)
 
+#ifdef ESP_STAGE2
+static u32 stage2_host_wait_ms;
+/* The ESP Stage 1 booted from (its chosen.asahi,efi-system-partition line): boot=esp;... */
+static const char *stage2_esp_uuid;
+static char stage2_boot_spec[640];
+#endif
 static const u8 gz_magic[] = {0x1f, 0x8b};
 static const u8 xz_magic[] = {0xfd, '7', 'z', 'X', 'Z', 0x00};
 static const u8 fdt_magic[] = {0xd0, 0x0d, 0xfe, 0xed};
@@ -290,6 +296,10 @@ static bool check_var(u8 **p)
     printf("Found variable %.*s\n", (int)(val - (char *)*p - 1), (char *)*p);
 
     if (IS_VAR("chosen.")) {
+#ifdef ESP_STAGE2
+        if (IS_VAR("chosen.asahi,efi-system-partition="))
+            stage2_esp_uuid = val;
+#endif
         if (chosen_cnt >= MAX_CHOSEN_VARS) {
             printf("Too many chosen vars, ignoring %.*s\n", (int)(val - (char *)*p - 1),
                    (char *)*p);
@@ -320,6 +330,14 @@ static bool check_var(u8 **p)
 #ifdef DEBUGUSB_PROXY
     } else if (IS_VAR("aura.host-window=")) {
         stage1_window_passed = true;
+#endif
+#ifdef ESP_STAGE2
+    } else if (IS_VAR("aura.host-wait=")) {
+        /* J704 development: wait this many ms for a USB host before NVMe is touched. */
+        u32 ms = 0;
+        for (const char *c = val; *c >= '0' && *c <= '9' && ms < 600000; c++)
+            ms = ms * 10 + (u32)(*c - '0');
+        stage2_host_wait_ms = ms > 600000 ? 600000 : ms;
 #endif
     } else if (IS_VAR("display=")) {
         display_configure(val);
@@ -505,6 +523,12 @@ int payload_run(void)
         return next_stage.entry ? 0 : -1;
 #endif
 
+#ifdef ESP_STAGE2
+    /* Before NVMe is touched (Stage 1 shut it down for this stage): a host gets a clean SSD. */
+    if (stage2_host_wait_ms && stage2_host_window(stage2_host_wait_ms))
+        return next_stage.entry ? 0 : -1;
+#endif
+
     if (chainload_spec && boot_spec) {
         printf("Payload: cannot combine boot= and chainload=\n");
         next_stage.entry = NULL;
@@ -539,6 +563,20 @@ int payload_run(void)
         return ret;
     }
 
+#ifdef ESP_STAGE2
+    if (boot_spec && !strncmp(boot_spec, "esp;", 4)) {
+        if (!stage2_esp_uuid || strlen(stage2_esp_uuid) + strlen(boot_spec) + 1 >
+                                    sizeof(stage2_boot_spec)) {
+            printf("Payload: boot=esp; but Stage 1 named no ESP\n");
+            next_stage.entry = NULL;
+            return -1;
+        }
+        snprintf(stage2_boot_spec, sizeof(stage2_boot_spec), "%s;%s", stage2_esp_uuid,
+                 boot_spec + 4);
+        boot_spec = stage2_boot_spec;
+        printf("Payload: boot=%s\n", boot_spec);
+    }
+#endif
     if (boot_spec) {
         cpufreq_payload_boost(true);
         int ret = boot_storage_load(boot_spec, &kernel, &fdt);
