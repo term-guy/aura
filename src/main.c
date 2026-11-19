@@ -93,15 +93,20 @@ static void stage1_run_host_proxy(void)
         uartproxy_run(NULL);
 }
 
-static bool stage1_wait_request_window(void)
+static bool stage1_wait_request_window_ms(u32 ms)
 {
-    stage1_window_result = uartproxy_wait_stage1(STAGE1_PROXY_REQUEST_MS);
+    stage1_window_result = uartproxy_wait_stage1(ms);
     if (stage1_window_result == STAGE1_PROXY_CDC || stage1_window_result == STAGE1_PROXY_KIS) {
         stage1_run_host_proxy();
         return true;
     }
     printf("Stage 1: proxy window ended\n");
     return false;
+}
+
+static bool stage1_wait_request_window(void)
+{
+    return stage1_wait_request_window_ms(STAGE1_PROXY_REQUEST_MS);
 }
 
 bool stage1_proxy_request_window(void)
@@ -112,6 +117,15 @@ bool stage1_proxy_request_window(void)
     printf("Stage 1: aura-proxy on the ESP, waiting %u s for a host\n",
            STAGE1_PROXY_REQUEST_MS / 1000);
     return stage1_wait_request_window();
+}
+
+bool stage2_host_window(u32 ms)
+{
+    if (stage1_window_done || !secboot_host_proxy_allowed())
+        return false;
+    stage1_window_done = true;
+    printf("aura-proxy: waiting %u s for a host\n", ms / 1000);
+    return stage1_wait_request_window_ms(ms);
 }
 
 #ifdef DEBUGUSB_PROXY

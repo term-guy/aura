@@ -13,6 +13,8 @@ u32 stage1_config_window_ms(void);
  */
 #define STAGE1_PROXY_REQUEST_MS 15000
 bool stage1_proxy_request_window(void);
+/* ESP Stage 2: aura.host-wait=<ms> (J704 development host window). */
+bool stage2_host_window(u32 ms);
 /*
  * After a boot that stopped before an OS started (iBoot's PMU record), Stage 1 holds this long
  * for a host before it boots its Stage 2 again, so a bad Stage 2 can be replaced over USB.
